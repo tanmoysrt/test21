@@ -34,6 +34,6 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           title: 'chore(auto-pr): Sync master to develop'
           body: 'Auto-generated PR to sync direct changes on master to develop.'
-          base: develop
+          base: backport
           head: main
           draft: false
