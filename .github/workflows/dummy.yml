@@ -1,64 +1,73 @@
-name: Backport single direct commit
+name: Auto PR from Master to Develop
 
 on:
   push:
     branches:
-      - main
+      - master
 
 jobs:
-  backport:
+  create-pr:
     runs-on: ubuntu-latest
+    # Skip if the commit message contains merge-related keywords
+    if: |
+      !contains(github.event.head_commit.message, 'Merge pull request') &&
+      !contains(github.event.head_commit.message, 'Merge branch') &&
+      !startsWith(github.event.head_commit.message, 'Merge')
+    
     steps:
-      - name: Checkout repo
+      - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Needed to fetch full commit history
-
-      - name: Setup Git identity
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-      - name: Fetch backport branch
-        run: git fetch origin backport
-
-      - name: Extract commit metadata
-        id: commit
-        run: |
-          COMMIT_SHA="${{ github.sha }}"
-          MESSAGE=$(git log -1 --pretty=format:%s "$COMMIT_SHA")
-          BODY=$(git log -1 --pretty=format:%b "$COMMIT_SHA")
-          SAFE_BRANCH_NAME="backport-${COMMIT_SHA}"
-          echo "sha=$COMMIT_SHA" >> $GITHUB_OUTPUT
-          echo "subject=$MESSAGE" >> $GITHUB_OUTPUT
-          echo "body<<EOF" >> $GITHUB_OUTPUT
-          echo "$BODY" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-          echo "branch=$SAFE_BRANCH_NAME" >> $GITHUB_ENV
-
-      - name: Create backport branch and cherry-pick commit (with conflict markers)
-        run: |
-          git checkout -b "$BRANCH" origin/backport
-
-          if ! git cherry-pick "${{ steps.commit.outputs.sha }}"; then
-            echo "Cherry-pick failed — handling conflicts with markers"
-            git status --porcelain | grep '^UU' | cut -c4- | while read file; do
-              git add "$file"
-            done
-            git commit -m "${{ steps.commit.outputs.subject }}" -m "${{ steps.commit.outputs.body }}"
-          fi
-
-      - name: Push backport branch
-        run: git push origin "$BRANCH"
-
-      - name: Create PR
-        uses: peter-evans/create-pull-request@v6
-        with:
+          fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
-          title: "${{ steps.commit.outputs.subject }}"
-          body: |
-            ${{ steps.commit.outputs.body }}
 
-            _Backported from commit `${{ steps.commit.outputs.sha }}` to branch `backport`._
-          base: backport
-          branch: ${{ env.BRANCH }}
+      - name: Configure Git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Get commit details
+        id: commit-info
+        run: |
+          # Get all commits since last common ancestor with develop
+          git fetch origin develop
+          COMMITS=$(git log origin/develop..HEAD --pretty=format:"- %h %s")
+          
+          # Store commits in a file to handle multiline content
+          echo "$COMMITS" > commits.txt
+
+      - name: Check if PR already exists
+        id: check-pr
+        run: |
+          # Check if there's already an open PR from master to develop
+          EXISTING_PR=$(gh pr list --head master --base develop --state open --json number --jq '.[0].number // empty')
+          echo "existing_pr=$EXISTING_PR" >> $GITHUB_OUTPUT
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create Pull Request
+        if: steps.check-pr.outputs.existing_pr == ''
+        run: |
+          # Read commits from file
+          COMMITS_LIST=$(cat commits.txt)
+          
+          # Create the PR
+          gh pr create \
+            --title "chore: Sync Changes from Master to Develop" \
+            --body "$COMMITS_LIST" \
+            --head master \
+            --base develop
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update existing PR
+        if: steps.check-pr.outputs.existing_pr != ''
+        run: |
+          # Read commits from file
+          COMMITS_LIST=$(cat commits.txt)
+          
+          # Update the existing PR
+          gh pr edit ${{ steps.check-pr.outputs.existing_pr }} \
+            --body "$COMMITS_LIST"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
