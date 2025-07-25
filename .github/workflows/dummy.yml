@@ -1,4 +1,4 @@
-name: Backport direct commit to backport branch
+name: Backport single direct commit
 
 on:
   push:
@@ -9,34 +9,56 @@ jobs:
   backport:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout full repo
+      - name: Checkout repo
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 0  # Needed to fetch full commit history
 
-      - name: Set variables
-        id: vars
-        run: |
-          echo "commit_sha=${{ github.sha }}" >> $GITHUB_OUTPUT
-
-      - name: Fetch backport branch
-        run: git fetch origin backport
-
-      - name: Create new backport branch and cherry-pick
+      - name: Setup Git identity
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          git checkout -b backport-${{ github.sha }} origin/backport
-          git cherry-pick ${{ steps.vars.outputs.commit_sha }} || echo "Nothing to cherry-pick"
-        continue-on-error: true
+      - name: Fetch backport branch
+        run: git fetch origin backport
+
+      - name: Extract commit metadata
+        id: commit
+        run: |
+          COMMIT_SHA="${{ github.sha }}"
+          MESSAGE=$(git log -1 --pretty=format:%s "$COMMIT_SHA")
+          BODY=$(git log -1 --pretty=format:%b "$COMMIT_SHA")
+          SAFE_BRANCH_NAME="backport-${COMMIT_SHA}"
+          echo "sha=$COMMIT_SHA" >> $GITHUB_OUTPUT
+          echo "subject=$MESSAGE" >> $GITHUB_OUTPUT
+          echo "body<<EOF" >> $GITHUB_OUTPUT
+          echo "$BODY" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          echo "branch=$SAFE_BRANCH_NAME" >> $GITHUB_ENV
+
+      - name: Create backport branch and cherry-pick commit (with conflict markers)
+        run: |
+          git checkout -b "$BRANCH" origin/backport
+
+          if ! git cherry-pick "${{ steps.commit.outputs.sha }}"; then
+            echo "Cherry-pick failed — handling conflicts with markers"
+            git status --porcelain | grep '^UU' | cut -c4- | while read file; do
+              git add "$file"
+            done
+            git commit -m "${{ steps.commit.outputs.subject }}" -m "${{ steps.commit.outputs.body }}"
+          fi
+
+      - name: Push backport branch
+        run: git push origin "$BRANCH"
 
       - name: Create PR
         uses: peter-evans/create-pull-request@v6
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          commit-message: "chore(backport): cherry-pick ${{ steps.vars.outputs.commit_sha }}"
-          title: "chore(backport): cherry-pick ${{ steps.vars.outputs.commit_sha }}"
-          body: "Backports ${{ steps.vars.outputs.commit_sha }} to backport branch."
+          title: "${{ steps.commit.outputs.subject }}"
+          body: |
+            ${{ steps.commit.outputs.body }}
+
+            _Backported from commit `${{ steps.commit.outputs.sha }}` to branch `backport`._
           base: backport
-          branch: backport-${{ github.sha }}
+          branch: ${{ env.BRANCH }}
