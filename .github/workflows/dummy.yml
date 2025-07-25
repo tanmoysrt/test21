@@ -1,4 +1,4 @@
-name: Auto PR from master to develop
+name: Auto PR from main to backport
 
 on:
   push:
@@ -9,13 +9,19 @@ jobs:
   create-pr:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
+      - name: Checkout full history
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Needed for git log to work properly
 
-      - name: Get latest commits
+      - name: Fetch all branches
+        run: git fetch origin backport
+
+      - name: Get non-merge commits between backport and main
         id: commits
         run: |
           COMMITS=$(git log origin/backport..origin/main --no-merges --pretty=format:"%H")
+          echo "COMMITS=$COMMITS"
           echo "COMMITS=$COMMITS" >> $GITHUB_OUTPUT
 
       - name: Check if there are non-merge commits
@@ -32,8 +38,8 @@ jobs:
         uses: peter-evans/create-pull-request@v6
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          title: 'chore(auto-pr): Sync master to develop'
-          body: 'Auto-generated PR to sync direct changes on master to develop.'
+          title: 'chore(auto-pr): Sync main to backport'
+          body: 'Auto-generated PR to sync direct changes on `main` to `backport`.'
           base: backport
           head: main
           draft: false
