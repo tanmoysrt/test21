@@ -33,12 +33,9 @@ jobs:
       - name: Get commit details
         id: commit-info
         run: |
-          # Get only the commit that triggered this action
-          COMMIT_HASH="${{ github.sha }}"
-          COMMIT_MESSAGE=$(git log -1 --pretty=format:"%s" $COMMIT_HASH)
-          
-          # Format as single commit entry
-          COMMITS="- $COMMIT_HASH $COMMIT_MESSAGE"
+          git fetch origin backport
+
+          COMMITS=$(git log origin/backport..HEAD --pretty=format:"- %h %s")
           
           # Store commits in a file to handle multiline content
           echo "$COMMITS" > commits.txt
