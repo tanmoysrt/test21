@@ -50,7 +50,7 @@ jobs:
           EXISTING_PR=$(gh pr list --head main --base backport --state open --json number --jq '.[0].number // empty')
           echo "existing_pr=$EXISTING_PR" >> $GITHUB_OUTPUT
         env:
-          GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Create Pull Request
         if: steps.check-pr.outputs.existing_pr == ''
@@ -70,7 +70,7 @@ $COMMITS_LIST"
             --head main \
             --base backport
         env:
-          GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Update existing PR
         if: steps.check-pr.outputs.existing_pr != ''
