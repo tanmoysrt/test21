@@ -60,8 +60,8 @@ jobs:
           
           # Create PR description with merge instruction
           PR_DESCRIPTION="**Please perform \`Merge & Commit\` to preserve commit history to avoid commit conflicts**
-
-$COMMITS_LIST"
+          
+          $COMMITS_LIST"
 
           # Create the PR
           gh pr create \
@@ -78,8 +78,8 @@ $COMMITS_LIST"
           # Read commits from file
           COMMITS_LIST=$(cat commits.txt)
           PR_DESCRIPTION="**Please perform \`Merge & Commit\` to preserve commit history to avoid commit conflicts**
-
-$COMMITS_LIST"
+          
+          $COMMITS_LIST"
  
           # Update the existing PR
           gh pr edit ${{ steps.check-pr.outputs.existing_pr }} \
