@@ -1,0 +1,39 @@
+name: Auto PR from master to develop
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  create-pr:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Get latest commits
+        id: commits
+        run: |
+          COMMITS=$(git log origin/develop..origin/master --no-merges --pretty=format:"%H")
+          echo "COMMITS=$COMMITS" >> $GITHUB_OUTPUT
+
+      - name: Check if there are non-merge commits
+        id: check
+        run: |
+          if [ -n "${{ steps.commits.outputs.COMMITS }}" ]; then
+            echo "non_merge_commits=true" >> $GITHUB_OUTPUT
+          else
+            echo "non_merge_commits=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create Pull Request
+        if: steps.check.outputs.non_merge_commits == 'true'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          title: 'chore(auto-pr): Sync master to develop'
+          body: 'Auto-generated PR to sync direct changes on master to develop.'
+          base: develop
+          head: main
+          draft: false
