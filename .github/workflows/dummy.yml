@@ -62,7 +62,7 @@ jobs:
           PR_DESCRIPTION="**Please perform \`Merge & Commit\` to preserve commit history to avoid commit conflicts**
 
 $COMMITS_LIST"
-          
+
           # Create the PR
           gh pr create \
             --title "chore: Sync Changes from Main to Backport" \
@@ -77,9 +77,12 @@ $COMMITS_LIST"
         run: |
           # Read commits from file
           COMMITS_LIST=$(cat commits.txt)
-          
+          PR_DESCRIPTION="**Please perform \`Merge & Commit\` to preserve commit history to avoid commit conflicts**
+
+$COMMITS_LIST"
+ 
           # Update the existing PR
           gh pr edit ${{ steps.check-pr.outputs.existing_pr }} \
-            --body "$COMMITS_LIST"
+            --body "$PR_DESCRIPTION"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
