@@ -1,9 +1,9 @@
-name: Auto PR from Master to Develop
+name: Auto PR from Main to Backport
 
 on:
   push:
     branches:
-      - master
+      - main
 
 jobs:
   create-pr:
@@ -29,9 +29,9 @@ jobs:
       - name: Get commit details
         id: commit-info
         run: |
-          # Get all commits since last common ancestor with develop
-          git fetch origin develop
-          COMMITS=$(git log origin/develop..HEAD --pretty=format:"- %h %s")
+          # Get all commits since last common ancestor with backport
+          git fetch origin backport
+          COMMITS=$(git log origin/backport..HEAD --pretty=format:"- %h %s")
           
           # Store commits in a file to handle multiline content
           echo "$COMMITS" > commits.txt
@@ -39,8 +39,8 @@ jobs:
       - name: Check if PR already exists
         id: check-pr
         run: |
-          # Check if there's already an open PR from master to develop
-          EXISTING_PR=$(gh pr list --head master --base develop --state open --json number --jq '.[0].number // empty')
+          # Check if there's already an open PR from main to backport
+          EXISTING_PR=$(gh pr list --head main --base backport --state open --json number --jq '.[0].number // empty')
           echo "existing_pr=$EXISTING_PR" >> $GITHUB_OUTPUT
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -53,10 +53,10 @@ jobs:
           
           # Create the PR
           gh pr create \
-            --title "chore: Sync Changes from Master to Develop" \
+            --title "chore: Sync Changes from Main to Backport" \
             --body "$COMMITS_LIST" \
-            --head master \
-            --base develop
+            --head main \
+            --base backport
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
