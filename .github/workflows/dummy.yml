@@ -33,9 +33,12 @@ jobs:
       - name: Get commit details
         id: commit-info
         run: |
-          # Get all commits since last common ancestor with backport
-          git fetch origin backport
-          COMMITS=$(git log origin/backport..HEAD --pretty=format:"- %h %s")
+          # Get only the commit that triggered this action
+          COMMIT_HASH="${{ github.sha }}"
+          COMMIT_MESSAGE=$(git log -1 --pretty=format:"%s" $COMMIT_HASH)
+          
+          # Format as single commit entry
+          COMMITS="- $COMMIT_HASH $COMMIT_MESSAGE"
           
           # Store commits in a file to handle multiline content
           echo "$COMMITS" > commits.txt
@@ -47,7 +50,7 @@ jobs:
           EXISTING_PR=$(gh pr list --head main --base backport --state open --json number --jq '.[0].number // empty')
           echo "existing_pr=$EXISTING_PR" >> $GITHUB_OUTPUT
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
 
       - name: Create Pull Request
         if: steps.check-pr.outputs.existing_pr == ''
@@ -55,14 +58,19 @@ jobs:
           # Read commits from file
           COMMITS_LIST=$(cat commits.txt)
           
+          # Create PR description with merge instruction
+          PR_DESCRIPTION="**Please perform \`Merge & Commit\` to preserve commit history to avoid commit conflicts**
+
+$COMMITS_LIST"
+          
           # Create the PR
           gh pr create \
             --title "chore: Sync Changes from Main to Backport" \
-            --body "$COMMITS_LIST" \
+            --body "$PR_DESCRIPTION" \
             --head main \
             --base backport
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
 
       - name: Update existing PR
         if: steps.check-pr.outputs.existing_pr != ''
