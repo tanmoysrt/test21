@@ -1,4 +1,4 @@
-name: Auto PR from main to backport
+name: Backport single commit to backport branch
 
 on:
   push:
@@ -6,40 +6,37 @@ on:
       - main
 
 jobs:
-  create-pr:
+  backport:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout full history
+      - name: Checkout full repo
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Needed for git log to work properly
+          fetch-depth: 0  # Needed to access full commit history
 
-      - name: Fetch all branches
+      - name: Fetch backport branch
         run: git fetch origin backport
 
-      - name: Get non-merge commits between backport and main
-        id: commits
+      - name: Get commit details
+        id: commit
         run: |
-          COMMITS=$(git log origin/backport..origin/main --no-merges --pretty=format:"%H")
-          echo "COMMITS=$COMMITS"
-          echo "COMMITS=$COMMITS" >> $GITHUB_OUTPUT
+          COMMIT_SHA=${{ github.sha }}
+          IS_MERGE=$(git rev-list --parents -n 1 "$COMMIT_SHA" | wc -w)
+          echo "commit_sha=$COMMIT_SHA" >> $GITHUB_OUTPUT
+          echo "is_merge=$IS_MERGE" >> $GITHUB_OUTPUT
 
-      - name: Check if there are non-merge commits
-        id: check
-        run: |
-          if [ -n "${{ steps.commits.outputs.COMMITS }}" ]; then
-            echo "non_merge_commits=true" >> $GITHUB_OUTPUT
-          else
-            echo "non_merge_commits=false" >> $GITHUB_OUTPUT
-          fi
+      - name: Skip merge commits
+        if: steps.commit.outputs.is_merge != '2'
+        run: echo "✅ Not a merge commit. Proceeding."
 
-      - name: Create Pull Request
-        if: steps.check.outputs.non_merge_commits == 'true'
+      - name: Create Backport PR
+        if: steps.commit.outputs.is_merge != '2'
         uses: peter-evans/create-pull-request@v6
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          title: 'chore(auto-pr): Sync main to backport'
-          body: 'Auto-generated PR to sync direct changes on `main` to `backport`.'
+          title: 'chore(backport): ${{ steps.commit.outputs.commit_sha }}'
+          body: |
+            Backport of ${{ steps.commit.outputs.commit_sha }} to `backport` branch.
           base: backport
           head: main
           draft: false
