@@ -15,7 +15,7 @@ jobs:
       - name: Get latest commits
         id: commits
         run: |
-          COMMITS=$(git log origin/develop..origin/master --no-merges --pretty=format:"%H")
+          COMMITS=$(git log origin/backport..origin/main --no-merges --pretty=format:"%H")
           echo "COMMITS=$COMMITS" >> $GITHUB_OUTPUT
 
       - name: Check if there are non-merge commits
