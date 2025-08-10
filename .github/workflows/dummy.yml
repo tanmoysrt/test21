@@ -1,4 +1,4 @@
-name: Auto PR from Main to Backport
+name: Auto PR from Main to Develop via Backport Branch
 
 on:
   push:
@@ -6,13 +6,12 @@ on:
       - main
 
 permissions:
-  contents: read
+  contents: write
   pull-requests: write
 
 jobs:
   create-pr:
     runs-on: ubuntu-latest
-    # Skip if the commit message contains merge-related keywords
     if: |
       !contains(github.event.head_commit.message, 'Merge pull request') &&
       !contains(github.event.head_commit.message, 'Merge branch') &&
@@ -30,21 +29,41 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
+      - name: Fetch branches
+        run: |
+          git fetch origin develop
+          git fetch origin backport_develop || true
+
+      - name: Prepare backport_develop branch
+        run: |
+          # Create backport_develop if it doesn't exist
+          if ! git show-ref --verify --quiet refs/remotes/origin/backport_develop; then
+            git checkout -b backport_develop origin/develop
+          else
+            git checkout backport_develop
+          fi
+
+          # Merge changes from main (only what's missing from develop)
+          git checkout main
+          git cherry-pick origin/develop..main || true
+
+          # Move back to backport_develop and apply changes
+          git checkout backport_develop
+          git merge main --no-edit
+
+          # Push updates to backport_develop
+          git push origin backport_develop
+
       - name: Get commit details
         id: commit-info
         run: |
-          git fetch origin backport
-
-          COMMITS=$(git log origin/backport..HEAD --pretty=format:"- %h %s")
-          
-          # Store commits in a file to handle multiline content
+          COMMITS=$(git log origin/develop..origin/backport_develop --pretty=format:"- %h %s")
           echo "$COMMITS" > commits.txt
 
       - name: Check if PR already exists
         id: check-pr
         run: |
-          # Check if there's already an open PR from main to backport
-          EXISTING_PR=$(gh pr list --head main --base backport --state open --json number --jq '.[0].number // empty')
+          EXISTING_PR=$(gh pr list --head backport_develop --base develop --state open --json number --jq '.[0].number // empty')
           echo "existing_pr=$EXISTING_PR" >> $GITHUB_OUTPUT
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -52,33 +71,27 @@ jobs:
       - name: Create Pull Request
         if: steps.check-pr.outputs.existing_pr == ''
         run: |
-          # Read commits from file
           COMMITS_LIST=$(cat commits.txt)
-          
-          # Create PR description with merge instruction
           PR_DESCRIPTION="**Please perform \`Merge & Commit\` to preserve commit history to avoid commit conflicts**
           
           $COMMITS_LIST"
 
-          # Create the PR
           gh pr create \
-            --title "chore: Sync Changes from Main to Backport" \
+            --title "chore: Sync Changes from Main to Develop" \
             --body "$PR_DESCRIPTION" \
-            --head main \
-            --base backport
+            --head backport_develop \
+            --base develop
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Update existing PR
         if: steps.check-pr.outputs.existing_pr != ''
         run: |
-          # Read commits from file
           COMMITS_LIST=$(cat commits.txt)
           PR_DESCRIPTION="**Please perform \`Merge & Commit\` to preserve commit history to avoid commit conflicts**
           
           $COMMITS_LIST"
- 
-          # Update the existing PR
+
           gh pr edit ${{ steps.check-pr.outputs.existing_pr }} \
             --body "$PR_DESCRIPTION"
         env:
