@@ -1,4 +1,4 @@
-name: Auto PR from Main to Develop via Backport Branch
+name: Auto PR from Main to Backport
 
 on:
   push:
@@ -16,7 +16,7 @@ jobs:
       !contains(github.event.head_commit.message, 'Merge pull request') &&
       !contains(github.event.head_commit.message, 'Merge branch') &&
       !startsWith(github.event.head_commit.message, 'Merge')
-    
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -29,41 +29,30 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Fetch branches
+      - name: Prepare backport_main branch
         run: |
-          git fetch origin develop
-          git fetch origin backport_develop || true
+          git fetch origin backport
+          git fetch origin main
 
-      - name: Prepare backport_develop branch
-        run: |
-          # Create backport_develop if it doesn't exist
-          if ! git show-ref --verify --quiet refs/remotes/origin/backport_develop; then
-            git checkout -b backport_develop origin/develop
-          else
-            git checkout backport_develop
-          fi
+          # Create/update backport_main from backport
+          git checkout -B backport_main origin/backport
 
-          # Merge changes from main (only what's missing from develop)
-          git checkout main
-          git cherry-pick origin/develop..main || true
+          # Merge changes from main into backport_main
+          git merge origin/main --no-edit
 
-          # Move back to backport_develop and apply changes
-          git checkout backport_develop
-          git merge main --no-edit
-
-          # Push updates to backport_develop
-          git push origin backport_develop
+          # Push updated backport_main to origin
+          git push origin backport_main --force-with-lease
 
       - name: Get commit details
-        id: commit-info
         run: |
-          COMMITS=$(git log origin/develop..origin/backport_develop --pretty=format:"- %h %s")
+          git fetch origin backport
+          COMMITS=$(git log origin/backport..origin/backport_main --pretty=format:"- %h %s")
           echo "$COMMITS" > commits.txt
 
       - name: Check if PR already exists
         id: check-pr
         run: |
-          EXISTING_PR=$(gh pr list --head backport_develop --base develop --state open --json number --jq '.[0].number // empty')
+          EXISTING_PR=$(gh pr list --head backport_main --base backport --state open --json number --jq '.[0].number // empty')
           echo "existing_pr=$EXISTING_PR" >> $GITHUB_OUTPUT
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -72,15 +61,15 @@ jobs:
         if: steps.check-pr.outputs.existing_pr == ''
         run: |
           COMMITS_LIST=$(cat commits.txt)
-          PR_DESCRIPTION="**Please perform \`Merge & Commit\` to preserve commit history to avoid commit conflicts**
+          PR_DESCRIPTION="**Please perform \`Merge & Commit\` to preserve commit history**
           
           $COMMITS_LIST"
 
           gh pr create \
-            --title "chore: Sync Changes from Main to Develop" \
+            --title "chore: Sync Changes from Main to Backport" \
             --body "$PR_DESCRIPTION" \
-            --head backport_develop \
-            --base develop
+            --head backport_main \
+            --base backport
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -88,7 +77,7 @@ jobs:
         if: steps.check-pr.outputs.existing_pr != ''
         run: |
           COMMITS_LIST=$(cat commits.txt)
-          PR_DESCRIPTION="**Please perform \`Merge & Commit\` to preserve commit history to avoid commit conflicts**
+          PR_DESCRIPTION="**Please perform \`Merge & Commit\` to preserve commit history**
           
           $COMMITS_LIST"
 
