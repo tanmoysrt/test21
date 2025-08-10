@@ -29,7 +29,7 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Prepare backport_main branch
+      - name: Prepare backport_main branch (Rebase)
         run: |
           git fetch origin backport
           git fetch origin main
@@ -37,10 +37,13 @@ jobs:
           # Create/update backport_main from backport
           git checkout -B backport_main origin/backport
 
-          # Merge changes from main into backport_main
-          git merge origin/main --no-edit
+          # Rebase onto main to avoid merge commits
+          git rebase origin/main || {
+            echo "Rebase conflict detected, aborting."
+            git rebase --abort
+            exit 1
+          }
 
-          # Push updated backport_main to origin
           git push origin backport_main --force-with-lease
 
       - name: Get commit details
